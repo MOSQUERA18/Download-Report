@@ -35,7 +35,7 @@ class SenaAutomation:
         chrome_options.add_experimental_option("prefs", prefs)
         
         self.driver = webdriver.Chrome(options=chrome_options)
-        self.wait = WebDriverWait(self.driver, 20) # Aumentado a 20 segundos
+        self.wait = WebDriverWait(self.driver, 20)
 
     def read_excel_fichas(self, excel_path):
         """Lee el archivo Excel y extrae los números de ficha"""
@@ -235,7 +235,7 @@ class SenaAutomation:
                 self.driver.switch_to.frame(outer)
                 
                 if self.try_click_ficha_button_in_current_frame():
-                    print(f"Clic exitoso en 'Consultar ficha' en iframe {i+1}")
+                    print(f"✓ Clic exitoso en 'Consultar ficha' en iframe {i+1}")
                     return True
                 
                 inner_iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
@@ -246,17 +246,17 @@ class SenaAutomation:
                         self.driver.switch_to.frame(inner)
                         
                         if self.try_click_ficha_button_in_current_frame():
-                            print(f"Clic exitoso en 'Consultar ficha' en iframe {i+1}.{j+1}")
+                            print(f"✓ Clic exitoso en 'Consultar ficha' en iframe {i+1}.{j+1}")
                             return True
                             
                     except Exception as inner_e:
                         continue
             
-            print("No se encontró el botón 'Consultar ficha'")
+            print("❌ No se encontró el botón 'Consultar ficha'")
             return False
             
         except Exception as e:
-            print(f"Error al buscar el botón: {e}")
+            print(f"❌ Error al buscar el botón: {e}")
             return False
 
     def try_click_ficha_button_in_current_frame(self):
@@ -276,7 +276,7 @@ class SenaAutomation:
                     self.driver.execute_script("arguments[0].scrollIntoView(true);", boton)
                     time.sleep(0.5)
                     boton.click()
-                    print(f"Clic exitoso con selector: {selector}")
+                    print(f"✓ Clic exitoso con selector: {selector}")
                     return True
                 except:
                     continue
@@ -286,114 +286,161 @@ class SenaAutomation:
         except:
             return False
 
-    def capture_full_html_debug(self):
-        """Captura TODO el HTML de la página para análisis"""
+    def wait_for_form_and_insert_ficha(self, ficha):
+        """Espera a que aparezca el formulario y procesa la ficha - SIN BUSCAR OVERLAY MODAL"""
         try:
-            print("\n=== CAPTURANDO HTML COMPLETO ===")
+            print(f"Esperando formulario para ficha: {ficha}")
+            
+            # PASO 1: Esperar un poco para que el formulario se cargue después del clic
+            print("Esperando que se cargue el formulario...")
+            time.sleep(3)
+            
+            # PASO 2: Buscar el campo de input directamente en el contexto actual
+            print("Buscando el campo de input en el contexto actual...")
+            input_ficha = None
+            
+            try:
+                # Intentar encontrar el input en el iframe actual (donde se hizo el clic)
+                input_ficha = self.wait.until(
+                    EC.element_to_be_clickable((By.ID, "form:codigoFichaITX"))
+                )
+                print("✓ Campo de input encontrado en el iframe actual")
+                
+                # Procesar el input
+                return self.process_input_field(input_ficha, ficha)
+                
+            except:
+                print("❌ No se encontró el input en el iframe actual, buscando en otros contextos...")
+                
+                # PASO 3: Si no se encuentra en el iframe actual, buscar en todos los contextos
+                return self.find_and_process_input_in_all_contexts(ficha)
+                
+        except Exception as e:
+            print(f"❌ Error general al procesar ficha {ficha}: {e}")
+            try:
+                self.driver.save_screenshot(f"error_ficha_{ficha}_form.png")
+                print(f"Screenshot guardado: error_ficha_{ficha}_form.png")
+            except:
+                pass
+            return False
+
+    def find_and_process_input_in_all_contexts(self, ficha):
+        """Busca el campo de input en todos los contextos posibles"""
+        try:
+            print("Buscando el campo de input en todos los contextos...")
+            
+            # Contexto 1: Página principal
+            print("Probando contexto principal...")
             self.driver.switch_to.default_content()
+            try:
+                input_ficha = self.driver.find_element(By.ID, "form:codigoFichaITX")
+                if input_ficha.is_displayed():
+                    print("✓ Campo encontrado en contexto principal")
+                    return self.process_input_field(input_ficha, ficha)
+            except:
+                pass
             
-            # Capturar HTML completo
-            full_html = self.driver.page_source
-            
-            # Guardar en archivo para análisis
-            with open("debug_full_page.html", "w", encoding="utf-8") as f:
-                f.write(full_html)
-            print("✓ HTML completo guardado en: debug_full_page.html")
-            
-            # Buscar TODOS los divs con cualquier ID
-            all_divs = self.driver.find_elements(By.TAG_NAME, "div")
-            print(f"\n=== TODOS LOS DIVS ENCONTRADOS: {len(all_divs)} ===")
-            
-            modal_candidates = []
-            for i, div in enumerate(all_divs):
-                try:
-                    div_id = div.get_attribute('id')
-                    div_class = div.get_attribute('class')
-                    div_style = div.get_attribute('style')
-                    is_visible = div.is_displayed()
-                    
-                    # Buscar divs que podrían ser modales
-                    if (div_id and ('modal' in div_id.lower() or 'dialog' in div_id.lower() or 'jsp' in div_id.lower())) or \
-                       (div_class and ('modal' in div_class.lower() or 'dialog' in div_class.lower())):
-                        modal_candidates.append({
-                            'index': i,
-                            'id': div_id,
-                            'class': div_class,
-                            'visible': is_visible,
-                            'style': div_style[:100] if div_style else 'None'
-                        })
-                        
-                except Exception as e:
-                    continue
-            
-            print(f"\n=== CANDIDATOS A MODAL: {len(modal_candidates)} ===")
-            for candidate in modal_candidates:
-                print(f"Div {candidate['index']}:")
-                print(f"  - ID: {candidate['id']}")
-                print(f"  - Class: {candidate['class']}")
-                print(f"  - Visible: {candidate['visible']}")
-                print(f"  - Style: {candidate['style']}")
-                print()
-            
-            # Buscar TODOS los iframes
+            # Contexto 2: Buscar en todos los iframes
+            print("Buscando en todos los iframes...")
+            self.driver.switch_to.default_content()
             all_iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
-            print(f"\n=== TODOS LOS IFRAMES: {len(all_iframes)} ===")
             
             for i, iframe in enumerate(all_iframes):
                 try:
                     iframe_id = iframe.get_attribute('id')
-                    iframe_src = iframe.get_attribute('src')
-                    iframe_class = iframe.get_attribute('class')
-                    is_visible = iframe.is_displayed()
+                    print(f"Probando iframe {i+1} (ID: {iframe_id})...")
                     
-                    print(f"Iframe {i+1}:")
-                    print(f"  - ID: {iframe_id}")
-                    print(f"  - Src: {iframe_src[:100] if iframe_src else 'None'}")
-                    print(f"  - Class: {iframe_class}")
-                    print(f"  - Visible: {is_visible}")
+                    # Cambiar al iframe
+                    self.driver.switch_to.default_content()
+                    self.driver.switch_to.frame(iframe)
                     
-                    # Si el iframe contiene 'ficha' o 'modal', intentar explorarlo
-                    if iframe_src and ('ficha' in iframe_src.lower() or 'modal' in iframe_src.lower()):
-                        print(f"  *** IFRAME SOSPECHOSO DE SER EL MODAL ***")
+                    # Buscar el input
+                    try:
+                        input_ficha = self.driver.find_element(By.ID, "form:codigoFichaITX")
+                        if input_ficha.is_displayed():
+                            print(f"✓ Campo encontrado en iframe {i+1}")
+                            return self.process_input_field(input_ficha, ficha)
+                    except:
+                        pass
+                    
+                    # Buscar en iframes anidados
+                    nested_iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
+                    for j, nested in enumerate(nested_iframes):
                         try:
-                            # Guardar contexto actual
+                            print(f"  Probando iframe anidado {i+1}.{j+1}...")
+                            self.driver.switch_to.default_content()
                             self.driver.switch_to.frame(iframe)
-                            iframe_html = self.driver.page_source
+                            self.driver.switch_to.frame(nested)
                             
-                            # Guardar HTML del iframe
-                            with open(f"debug_iframe_{i+1}.html", "w", encoding="utf-8") as f:
-                                f.write(iframe_html)
-                            print(f"  - HTML del iframe guardado en: debug_iframe_{i+1}.html")
-                            
-                            # Buscar inputs en este iframe
-                            inputs_in_iframe = self.driver.find_elements(By.TAG_NAME, "input")
-                            print(f"  - Inputs encontrados en iframe: {len(inputs_in_iframe)}")
-                            
-                            for j, inp in enumerate(inputs_in_iframe):
-                                inp_id = inp.get_attribute('id')
-                                inp_name = inp.get_attribute('name')
-                                inp_type = inp.get_attribute('type')
-                                print(f"    Input {j+1}: id='{inp_id}' name='{inp_name}' type='{inp_type}'")
-                            
-                            # Volver al contexto principal
-                            self.driver.switch_to.default_content()
-                            
-                        except Exception as iframe_error:
-                            print(f"  - Error explorando iframe: {iframe_error}")
-                            self.driver.switch_to.default_content()
-                    
-                    print()
-                    
+                            input_ficha = self.driver.find_element(By.ID, "form:codigoFichaITX")
+                            if input_ficha.is_displayed():
+                                print(f"✓ Campo encontrado en iframe anidado {i+1}.{j+1}")
+                                return self.process_input_field(input_ficha, ficha)
+                                
+                        except:
+                            continue
+                        
                 except Exception as e:
-                    print(f"Iframe {i+1}: Error obteniendo atributos - {e}")
+                    continue
             
-            print("=== FIN CAPTURA HTML ===\n")
+            print("❌ No se encontró el campo de input en ningún contexto")
+            self.driver.switch_to.default_content()
+            return False
             
         except Exception as e:
-            print(f"Error en captura HTML: {e}")
+            print(f"Error buscando en contextos: {e}")
+            self.driver.switch_to.default_content()
+            return False
 
-    def process_single_ficha_with_full_debug(self, ficha):
-        """Versión con debug completo y lógica de modal mejorada para iframes anidados"""
+    def process_input_field(self, input_element, ficha):
+        """Procesa el campo de input insertando la ficha"""
+        try:
+            print(f"Procesando campo de input para ficha: {ficha}")
+            
+            # Verificar que el elemento sea visible e interactuable
+            if not input_element.is_displayed():
+                print("❌ El campo de input no es visible")
+                return False
+            
+            if not input_element.is_enabled():
+                print("❌ El campo de input no está habilitado")
+                return False
+            
+            # Hacer scroll al elemento
+            self.driver.execute_script("arguments[0].scrollIntoView(true);", input_element)
+            time.sleep(0.5)
+            
+            # Hacer clic para enfocar el campo
+            print("Haciendo clic en el campo de input...")
+            input_element.click()
+            time.sleep(0.5)
+            
+            # Limpiar el campo
+            print("Limpiando el campo...")
+            input_element.clear()
+            time.sleep(0.5)
+            
+            # Insertar la ficha
+            print(f"Insertando ficha: {ficha}")
+            input_element.send_keys(str(ficha))
+            time.sleep(1)
+            
+            # Verificar que se insertó correctamente
+            inserted_value = input_element.get_attribute('value')
+            if inserted_value == str(ficha):
+                print(f"✓ Ficha '{ficha}' insertada correctamente")
+                time.sleep(2)
+                return True
+            else:
+                print(f"❌ Error: Se esperaba '{ficha}' pero se insertó '{inserted_value}'")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Error al procesar el campo de input: {e}")
+            return False
+
+    def process_single_ficha(self, ficha):
+        """Procesa una sola ficha: hace clic en el botón y luego inserta la ficha"""
         try:
             print(f"\n{'='*50}")
             print(f"PROCESANDO FICHA: {ficha}")
@@ -404,166 +451,17 @@ class SenaAutomation:
                 print(f"❌ No se pudo hacer clic en 'Consultar ficha' para la ficha {ficha}")
                 return False
             
-            # Paso 2: Esperar más tiempo para que el modal se abra completamente y capturar HTML
-            print("Esperando 5 segundos para que el modal se abra completamente...")
-            time.sleep(5)
-            self.capture_full_html_debug() # Capturar HTML para análisis
-            
-            # Paso 3: Intentar encontrar el contenedor principal del modal (myModal o myModal2)
-            print("Intentando encontrar el contenedor principal del modal (myModal o myModal2) visible...")
-            self.driver.switch_to.default_content() # Asegurarse de estar en el contexto principal
-            
-            main_modal_container = None
-            modal_container_found = False
-            
-            # Estrategia 1: Buscar por ID 'myModal' o 'myModal2' si son visibles
-            modal_ids = ["myModal", "myModal2"]
-            for modal_id in modal_ids:
-                try:
-                    main_modal_container = self.wait.until(
-                        EC.visibility_of_element_located((By.ID, modal_id))
-                    )
-                    print(f"✓ Contenedor principal '{modal_id}' encontrado y visible.")
-                    modal_container_found = True
-                    break
-                except:
-                    continue
-            
-            # Estrategia 2: Buscar por clase 'modal fade' y estilo 'display: block' si no se encontró por ID
-            if not modal_container_found:
-                try:
-                    main_modal_container = self.wait.until(
-                        EC.visibility_of_element_located((By.XPATH, "//div[contains(@class, 'modal') and contains(@class, 'fade') and contains(@style, 'display: block')]"))
-                    )
-                    print("✓ Contenedor principal encontrado por clase 'modal fade' y estilo 'display: block'.")
-                    modal_container_found = True
-                except:
-                    print("❌ No se encontró un contenedor de modal principal visible.")
-                    return False
-            
-            if not modal_container_found:
-                print("❌ No se pudo encontrar el contenedor principal del modal.")
+            # Paso 2: Esperar el formulario e insertar la ficha (SIN BUSCAR OVERLAY)
+            if not self.wait_for_form_and_insert_ficha(ficha):
+                print(f"❌ No se pudo insertar la ficha {ficha}")
                 return False
-
-            # Paso 4: Buscar el iframe interno (ifraModal o ifraModal2) dentro del contenedor principal del modal
-            print("Buscando el iframe interno (ifraModal o ifraModal2) dentro del modal principal...")
-            inner_iframe_element = None
-            inner_iframe_found = False
             
-            iframe_ids = ["ifraModal", "ifraModal2"]
-            for iframe_id in iframe_ids:
-                try:
-                    inner_iframe_element = main_modal_container.find_element(By.ID, iframe_id)
-                    print(f"✓ Iframe interno '{iframe_id}' encontrado dentro del modal principal.")
-                    inner_iframe_found = True
-                    break
-                except:
-                    continue
+            print(f"✓ Ficha {ficha} procesada exitosamente")
+            return True
             
-            if not inner_iframe_found:
-                # Fallback: buscar cualquier iframe dentro del contenedor principal
-                try:
-                    inner_iframe_element = main_modal_container.find_element(By.TAG_NAME, "iframe")
-                    print("✓ Iframe genérico encontrado dentro del modal principal.")
-                    inner_iframe_found = True
-                except:
-                    print("❌ No se encontró ningún iframe interno dentro del modal principal.")
-                    return False
-            
-            if not inner_iframe_found:
-                print("❌ No se pudo encontrar el iframe interno del modal.")
-                return False
-
-            # Paso 5: Cambiar al iframe interno (ifraModal/ifraModal2)
-            print("Cambiando al iframe interno (ifraModal/ifraModal2)...")
-            try:
-                self.driver.switch_to.frame(inner_iframe_element)
-                print("✓ Cambio exitoso al iframe interno.")
-            except Exception as e:
-                print(f"❌ Error al cambiar al iframe interno: {e}")
-                self.driver.switch_to.default_content()
-                return False
-
-            # Paso 6: Esperar que el iframe anidado (modalDialogContentviewDialog2) aparezca dentro del iframe interno
-            print("Esperando que el iframe anidado 'modalDialogContentviewDialog2' aparezca dentro del iframe interno...")
-            nested_iframe_element = None
-            try:
-                nested_iframe_element = self.wait.until(
-                    EC.presence_of_element_located((By.ID, "modalDialogContentviewDialog2"))
-                )
-                print("✓ Iframe anidado 'modalDialogContentviewDialog2' encontrado.")
-            except Exception as e:
-                print(f"❌ No se encontró el iframe anidado 'modalDialogContentviewDialog2': {e}")
-                self.driver.switch_to.default_content()
-                return False
-
-            # Paso 7: Cambiar al iframe anidado (modalDialogContentviewDialog2)
-            print("Cambiando al iframe anidado 'modalDialogContentviewDialog2'...")
-            try:
-                self.driver.switch_to.frame(nested_iframe_element)
-                print("✓ Cambio exitoso al iframe anidado.")
-            except Exception as e:
-                print(f"❌ Error al cambiar al iframe anidado: {e}")
-                self.driver.switch_to.default_content()
-                return False
-
-            # Paso 8: Localizar y interactuar con el campo de input dentro del iframe anidado
-            print("Buscando campo de input 'form:codigoFichaITX' dentro del iframe anidado...")
-            input_ficha = None
-            input_selectors = [
-                (By.ID, "form:codigoFichaITX"),
-                (By.NAME, "form:codigoFichaITX"),
-                (By.XPATH, "//input[@type='text']"),
-                (By.XPATH, "//input[contains(@title, 'Ficha')]")
-            ]
-
-            for by_type, selector in input_selectors:
-                try:
-                    input_ficha = self.wait.until(EC.presence_of_element_located((by_type, selector)))
-                    print(f"✓ Input encontrado con selector: {selector}")
-                    break
-                except:
-                    continue
-            
-            if not input_ficha:
-                print("❌ No se pudo encontrar el campo de input en el iframe anidado.")
-                self.driver.switch_to.default_content()
-                return False
-
-            # Paso 9: Procesar el input
-            self.driver.execute_script("arguments[0].scrollIntoView(true);", input_ficha)
-            time.sleep(0.5)
-            input_ficha.click()
-            time.sleep(0.5)
-            input_ficha.clear()
-            input_ficha.send_keys(str(ficha))
-            time.sleep(1)
-
-            # Paso 10: Verificar y volver al contexto principal
-            inserted_value = input_ficha.get_attribute('value')
-            if inserted_value == str(ficha):
-                print(f"✓ Ficha '{ficha}' insertada correctamente.")
-                time.sleep(2)
-                self.driver.switch_to.default_content()
-                return True
-            else:
-                print(f"❌ Error: Se esperaba '{ficha}' pero se insertó '{inserted_value}'.")
-                self.driver.switch_to.default_content()
-                return False
-
         except Exception as e:
-            print(f"❌ Error general al procesar ficha {ficha}: {e}")
-            try:
-                self.driver.save_screenshot(f"error_ficha_{ficha}_detailed.png")
-                print(f"Screenshot guardado: error_ficha_{ficha}_detailed.png")
-            except:
-                pass
-            self.driver.switch_to.default_content()
+            print(f"❌ Error al procesar ficha {ficha}: {e}")
             return False
-
-    def process_single_ficha(self, ficha):
-        """Procesa una sola ficha - USA EL DEBUG COMPLETO"""
-        return self.process_single_ficha_with_full_debug(ficha)
 
     def run_automation(self, excel_path):
         """Ejecuta la automatización completa"""
@@ -573,8 +471,8 @@ class SenaAutomation:
             if not fichas:
                 return
             
-            # Tomar solo las primeras 1 ficha para testing
-            fichas = fichas[:1]  # Comentar esta línea para procesar todas
+            # Tomar solo las primeras 3 fichas para testing
+            fichas = fichas[:3]  # Comentar esta línea para procesar todas
             
             # Navegar al sitio (una sola vez)
             if not self.navigate_to_sena():
