@@ -287,7 +287,7 @@ class SenaAutomation:
             return False
 
     def wait_for_form_and_insert_ficha(self, ficha):
-        """Espera a que aparezca el formulario y procesa la ficha - SIN BUSCAR OVERLAY MODAL"""
+        """Espera a que aparezca el formulario y procesa la ficha completa"""
         try:
             print(f"Esperando formulario para ficha: {ficha}")
             
@@ -295,7 +295,7 @@ class SenaAutomation:
             print("Esperando que se cargue el formulario...")
             time.sleep(3)
             
-            # PASO 2: Buscar el campo de input directamente en el contexto actual
+            # PASO 2: Buscar e insertar la ficha en el campo de input
             print("Buscando el campo de input en el contexto actual...")
             input_ficha = None
             
@@ -307,13 +307,43 @@ class SenaAutomation:
                 print("✓ Campo de input encontrado en el iframe actual")
                 
                 # Procesar el input
-                return self.process_input_field(input_ficha, ficha)
+                if not self.process_input_field(input_ficha, ficha):
+                    return False
                 
             except:
                 print("❌ No se encontró el input en el iframe actual, buscando en otros contextos...")
                 
-                # PASO 3: Si no se encuentra en el iframe actual, buscar en todos los contextos
-                return self.find_and_process_input_in_all_contexts(ficha)
+                # Si no se encuentra en el iframe actual, buscar en todos los contextos
+                if not self.find_and_process_input_in_all_contexts(ficha):
+                    return False
+            
+            # PASO 3: Hacer clic en el botón "Consultar" después de insertar la ficha
+            print("Buscando el botón 'Consultar' para ejecutar la búsqueda...")
+            if not self.click_consultar_button():
+                print("❌ No se pudo hacer clic en el botón 'Consultar'")
+                return False
+            
+            # PASO 4: Esperar 2 segundos y hacer clic en el botón "Agregar"
+            print("Esperando 2 segundos para que aparezcan los resultados...")
+            time.sleep(2)
+            
+            if not self.click_agregar_button():
+                print("❌ No se pudo hacer clic en el botón 'Agregar'")
+                return False
+            
+            # PASO 5: Después de hacer clic en "Agregar", la modal se cierra automáticamente
+            # Ahora estamos de vuelta en la página principal
+            print("Modal cerrada, regresando al contexto principal...")
+            self.driver.switch_to.default_content()
+            time.sleep(3)  # Esperar un poco más para que se actualice la página
+            
+            # PASO 6: Simplemente seleccionar "Primera Opción" en el select
+            if not self.select_primera_opcion():
+                print("❌ No se pudo seleccionar 'Primera Opción'")
+                return False
+            
+            print("✓ Proceso completo: ficha insertada, búsqueda ejecutada, elemento agregado y opción seleccionada")
+            return True
                 
         except Exception as e:
             print(f"❌ Error general al procesar ficha {ficha}: {e}")
@@ -322,6 +352,233 @@ class SenaAutomation:
                 print(f"Screenshot guardado: error_ficha_{ficha}_form.png")
             except:
                 pass
+            return False
+
+    def click_consultar_button(self):
+        """Hace clic en el botón 'Consultar' para ejecutar la búsqueda"""
+        try:
+            print("Buscando el botón 'Consultar' (form:buscarCBT)...")
+            
+            # Estrategia 1: Buscar por ID específico
+            try:
+                consultar_button = self.wait.until(
+                    EC.element_to_be_clickable((By.ID, "form:buscarCBT"))
+                )
+                print("✓ Botón 'Consultar' encontrado por ID")
+                
+                # Hacer scroll al botón
+                self.driver.execute_script("arguments[0].scrollIntoView(true);", consultar_button)
+                time.sleep(0.5)
+                
+                # Hacer clic
+                consultar_button.click()
+                print("✓ Clic exitoso en el botón 'Consultar'")
+                
+                # Esperar a que se procese la búsqueda
+                time.sleep(3)
+                return True
+                
+            except:
+                print("❌ No se encontró el botón por ID, probando otros selectores...")
+                
+                # Estrategia 2: Buscar por name
+                try:
+                    consultar_button = self.driver.find_element(By.NAME, "form:buscarCBT")
+                    if consultar_button.is_displayed() and consultar_button.is_enabled():
+                        print("✓ Botón 'Consultar' encontrado por NAME")
+                        self.driver.execute_script("arguments[0].scrollIntoView(true);", consultar_button)
+                        time.sleep(0.5)
+                        consultar_button.click()
+                        print("✓ Clic exitoso en el botón 'Consultar'")
+                        time.sleep(3)
+                        return True
+                except:
+                    pass
+                
+                # Estrategia 3: Buscar por valor "Consultar"
+                try:
+                    consultar_button = self.driver.find_element(By.XPATH, "//input[@value='Consultar']")
+                    if consultar_button.is_displayed() and consultar_button.is_enabled():
+                        print("✓ Botón 'Consultar' encontrado por valor")
+                        self.driver.execute_script("arguments[0].scrollIntoView(true);", consultar_button)
+                        time.sleep(0.5)
+                        consultar_button.click()
+                        print("✓ Clic exitoso en el botón 'Consultar'")
+                        time.sleep(3)
+                        return True
+                except:
+                    pass
+            
+            print("❌ No se pudo encontrar el botón 'Consultar' con ninguna estrategia")
+            return False
+            
+        except Exception as e:
+            print(f"❌ Error al buscar el botón 'Consultar': {e}")
+            return False
+
+    def click_agregar_button(self):
+        """Hace clic en el botón 'Agregar' en los resultados de la búsqueda"""
+        try:
+            print("Buscando el botón 'Agregar' en los resultados...")
+            
+            # Estrategia 1: Buscar por ID específico (primer resultado)
+            try:
+                agregar_button = self.wait.until(
+                    EC.element_to_be_clickable((By.ID, "form:dtFichas:0:imgSelec"))
+                )
+                print("✓ Botón 'Agregar' encontrado por ID específico (form:dtFichas:0:imgSelec)")
+                
+                # Hacer scroll al botón
+                self.driver.execute_script("arguments[0].scrollIntoView(true);", agregar_button)
+                time.sleep(0.5)
+                
+                # Hacer clic
+                agregar_button.click()
+                print("✓ Clic exitoso en el botón 'Agregar'")
+                
+                # Esperar a que se procese la acción y se cierre la modal
+                time.sleep(3)
+                return True
+                
+            except:
+                print("❌ No se encontró el botón por ID específico, probando patrones generales...")
+                
+                # Estrategia 2: Buscar por patrón de ID (cualquier fila)
+                try:
+                    agregar_buttons = self.driver.find_elements(By.XPATH, "//img[contains(@id, 'dtFichas') and contains(@id, 'imgSelec')]")
+                    if agregar_buttons:
+                        agregar_button = agregar_buttons[0]  # Tomar el primero
+                        button_id = agregar_button.get_attribute('id')
+                        print(f"✓ Botón 'Agregar' encontrado por patrón: {button_id}")
+                        
+                        self.driver.execute_script("arguments[0].scrollIntoView(true);", agregar_button)
+                        time.sleep(0.5)
+                        agregar_button.click()
+                        print("✓ Clic exitoso en el botón 'Agregar'")
+                        time.sleep(3)
+                        return True
+                except:
+                    pass
+                
+                # Estrategia 3: Buscar por title "Agregar"
+                try:
+                    agregar_button = self.driver.find_element(By.XPATH, "//img[@title='Agregar']")
+                    if agregar_button.is_displayed():
+                        print("✓ Botón 'Agregar' encontrado por title")
+                        self.driver.execute_script("arguments[0].scrollIntoView(true);", agregar_button)
+                        time.sleep(0.5)
+                        agregar_button.click()
+                        print("✓ Clic exitoso en el botón 'Agregar'")
+                        time.sleep(3)
+                        return True
+                except:
+                    pass
+            
+            print("❌ No se pudo encontrar el botón 'Agregar' con ninguna estrategia")
+            return False
+            
+        except Exception as e:
+            print(f"❌ Error al buscar el botón 'Agregar': {e}")
+            return False
+
+    def select_primera_opcion(self):
+        """Selecciona 'Primera Opción' en el select de la página principal"""
+        try:
+            print("Buscando el select 'opcionesInscritos' en la página principal...")
+            
+            # Asegurarse de estar en el contexto principal
+            self.driver.switch_to.default_content()
+            
+            # Buscar el select con múltiples estrategias
+            select_element = None
+            
+            # Estrategia 1: Por ID directo
+            try:
+                select_element = self.wait.until(
+                    EC.presence_of_element_located((By.ID, "opcionesInscritos"))
+                )
+                print("✓ Select 'opcionesInscritos' encontrado por ID")
+            except:
+                print("❌ No se encontró el select por ID, probando otros selectores...")
+                
+                # Estrategia 2: Por name
+                try:
+                    select_element = self.driver.find_element(By.NAME, "opcionesInscritos")
+                    print("✓ Select 'opcionesInscritos' encontrado por NAME")
+                except:
+                    pass
+                
+                # Estrategia 3: Por xpath con label
+                try:
+                    select_element = self.driver.find_element(By.XPATH, "//select[preceding-sibling::*//label[contains(text(), 'Consultar Inscritos')]]")
+                    print("✓ Select encontrado por xpath con label")
+                except:
+                    pass
+            
+            if not select_element:
+                print("❌ No se pudo encontrar el select con ninguna estrategia")
+                return False
+            
+            # Verificar que el select sea visible e interactuable
+            if not select_element.is_displayed():
+                print("❌ El select no es visible")
+                return False
+            
+            if not select_element.is_enabled():
+                print("❌ El select no está habilitado")
+                return False
+            
+            # Hacer scroll al select
+            self.driver.execute_script("arguments[0].scrollIntoView(true);", select_element)
+            time.sleep(1)
+            
+            # Crear objeto Select de Selenium
+            select_obj = Select(select_element)
+            
+            # Verificar las opciones disponibles
+            options = select_obj.options
+            print(f"Opciones disponibles en el select: {len(options)}")
+            for i, option in enumerate(options):
+                option_value = option.get_attribute('value')
+                option_text = option.text
+                is_selected = option.is_selected()
+                print(f"  Opción {i}: value='{option_value}' text='{option_text}' selected={is_selected}")
+            
+            # Seleccionar "Primera Opción" (value="1")
+            try:
+                print("Seleccionando 'Primera Opción' (value='1')...")
+                select_obj.select_by_value("1")
+                print("✓ 'Primera Opción' seleccionada por valor '1'")
+                time.sleep(2)
+                
+                # Verificar que se seleccionó correctamente
+                new_selection = select_obj.first_selected_option
+                new_value = new_selection.get_attribute('value')
+                new_text = new_selection.text
+                
+                if new_value == "1":
+                    print(f"✓ Selección confirmada: '{new_text}' (value='{new_value}')")
+                    return True
+                else:
+                    print(f"❌ Error en la selección: se esperaba value='1' pero se obtuvo '{new_value}'")
+                    return False
+                    
+            except Exception as select_error:
+                print(f"❌ Error al seleccionar por valor: {select_error}")
+                
+                # Intentar seleccionar por texto como fallback
+                try:
+                    print("Intentando seleccionar por texto 'Primera Opción'...")
+                    select_obj.select_by_visible_text("Primera Opción")
+                    print("✓ 'Primera Opción' seleccionada por texto")
+                    time.sleep(2)
+                    return True
+                except Exception as text_error:
+                    print(f"❌ Error al seleccionar por texto: {text_error}")
+                    return False
+                
+        except Exception as e:
+            print(f"❌ Error al buscar/seleccionar en el select: {e}")
             return False
 
     def find_and_process_input_in_all_contexts(self, ficha):
@@ -429,7 +686,7 @@ class SenaAutomation:
             inserted_value = input_element.get_attribute('value')
             if inserted_value == str(ficha):
                 print(f"✓ Ficha '{ficha}' insertada correctamente")
-                time.sleep(2)
+                time.sleep(1)
                 return True
             else:
                 print(f"❌ Error: Se esperaba '{ficha}' pero se insertó '{inserted_value}'")
@@ -440,7 +697,7 @@ class SenaAutomation:
             return False
 
     def process_single_ficha(self, ficha):
-        """Procesa una sola ficha: hace clic en el botón y luego inserta la ficha"""
+        """Procesa una sola ficha: hace clic en el botón, inserta la ficha, ejecuta la consulta, agrega el resultado y selecciona la opción"""
         try:
             print(f"\n{'='*50}")
             print(f"PROCESANDO FICHA: {ficha}")
@@ -451,16 +708,79 @@ class SenaAutomation:
                 print(f"❌ No se pudo hacer clic en 'Consultar ficha' para la ficha {ficha}")
                 return False
             
-            # Paso 2: Esperar el formulario e insertar la ficha (SIN BUSCAR OVERLAY)
+            # Paso 2: Esperar el formulario, insertar la ficha, hacer clic en "Consultar", "Agregar" y seleccionar opción
             if not self.wait_for_form_and_insert_ficha(ficha):
-                print(f"❌ No se pudo insertar la ficha {ficha}")
+                print(f"❌ No se pudo completar el proceso para la ficha {ficha}")
                 return False
             
-            print(f"✓ Ficha {ficha} procesada exitosamente")
+            print(f"✓ Ficha {ficha} procesada exitosamente y 'Primera Opción' seleccionada")
             return True
             
         except Exception as e:
             print(f"❌ Error al procesar ficha {ficha}: {e}")
+            return False
+
+    def click_consultar_aspirantes_button(self):
+        """Hace clic en el botón 'Consultar aspirantes' después de seleccionar la opción"""
+        try:
+            print("Buscando el botón 'Consultar aspirantes'...")
+            self.driver.switch_to.default_content()
+            
+            # Estrategia 1: Buscar por ID específico
+            try:
+                consultar_button = self.wait.until(
+                    EC.element_to_be_clickable((By.ID, "frmPrincipal:cmdlnkSearch"))
+                )
+                print("✓ Botón 'Consultar aspirantes' encontrado por ID")
+                
+                # Hacer scroll al botón
+                self.driver.execute_script("arguments[0].scrollIntoView(true);", consultar_button)
+                time.sleep(0.5)
+                
+                # Hacer clic
+                consultar_button.click()
+                print("✓ Clic exitoso en el botón 'Consultar aspirantes'")
+                
+                # Esperar a que se genere el reporte
+                time.sleep(5)
+                return True
+                
+            except:
+                print("❌ No se encontró el botón por ID, probando otros selectores...")
+                
+                # Estrategia 2: Buscar por valor "Consultar aspirantes"
+                try:
+                    consultar_button = self.driver.find_element(By.XPATH, "//input[@value='Consultar aspirantes ']")
+                    if consultar_button.is_displayed() and consultar_button.is_enabled():
+                        print("✓ Botón 'Consultar aspirantes' encontrado por valor")
+                        self.driver.execute_script("arguments[0].scrollIntoView(true);", consultar_button)
+                        time.sleep(0.5)
+                        consultar_button.click()
+                        print("✓ Clic exitoso en el botón 'Consultar aspirantes'")
+                        time.sleep(5)
+                        return True
+                except:
+                    pass
+                
+                # Estrategia 3: Buscar por cualquier botón que contenga "Consultar"
+                try:
+                    consultar_button = self.driver.find_element(By.XPATH, "//input[contains(@value, 'Consultar')]")
+                    if consultar_button.is_displayed() and consultar_button.is_enabled():
+                        print("✓ Botón 'Consultar' encontrado por contenido")
+                        self.driver.execute_script("arguments[0].scrollIntoView(true);", consultar_button)
+                        time.sleep(0.5)
+                        consultar_button.click()
+                        print("✓ Clic exitoso en el botón 'Consultar'")
+                        time.sleep(5)
+                        return True
+                except:
+                    pass
+            
+            print("❌ No se pudo encontrar el botón 'Consultar aspirantes' con ninguna estrategia")
+            return False
+            
+        except Exception as e:
+            print(f"❌ Error al buscar el botón 'Consultar aspirantes': {e}")
             return False
 
     def run_automation(self, excel_path):
@@ -494,7 +814,18 @@ class SenaAutomation:
                 # Pausa entre fichas
                 if i < len(fichas) - 1:  # No pausar después de la última
                     print("Esperando antes de la siguiente ficha...")
-                    time.sleep(3)
+                    time.sleep(5)  # Tiempo para que se procesen los resultados
+            
+            # Después de procesar todas las fichas, hacer clic en "Consultar aspirantes"
+            if successful > 0:
+                print(f"\n{'='*50}")
+                print(f"GENERANDO REPORTE FINAL")
+                print(f"{'='*50}")
+                
+                if self.click_consultar_aspirantes_button():
+                    print("✓ Reporte generado exitosamente")
+                else:
+                    print("❌ Error al generar el reporte final")
             
             print(f"\n{'='*50}")
             print(f"AUTOMATIZACIÓN COMPLETADA")
