@@ -366,14 +366,6 @@ class SenaAutomation:
                 print("❌ No se pudo hacer clic en el botón 'Agregar'")
                 return False
             
-            # PASO 5: Seleccionar "Primera Opción" en el select, que está en el MISMO IFRAME
-            print("Buscando el select 'opcionesInscritos' en el mismo iframe...")
-            time.sleep(3) # Dar tiempo para que el select aparezca/se actualice
-            
-            if not self.select_primera_opcion_in_iframe():
-                print("❌ No se pudo seleccionar 'Primera Opción' en el iframe")
-                return False
-            
             print("✓ Proceso completo: ficha insertada, búsqueda ejecutada, elemento agregado y opción seleccionada en el iframe")
             return True
                 
