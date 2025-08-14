@@ -17,7 +17,6 @@ from selenium.webdriver.firefox.options import Options
 class SenaAutomation:
     def __init__(self):
         self.setup_logging()
-        self.setup_driver()
         
     def setup_logging(self):
         """Configura el sistema de logging avanzado"""
@@ -1114,56 +1113,53 @@ class SenaAutomation:
             return False
 
     def run_automation(self, excel_path):
-        """Ejecuta la automatización completa"""
+        """Ejecuta la automatización abriendo/cerrando navegador por ficha"""
         try:
             # Leer fichas del Excel
             fichas = self.read_excel_fichas(excel_path)
             if not fichas:
                 return
             
-            # Tomar solo las primeras 3 fichas para testing
-            fichas = fichas[:1]  # Solo 1 ficha para testing completo
-            
-            # Navegar al sitio (una sola vez)
-            if not self.navigate_to_sena():
-                self.logger.error("❌ Error en la navegación inicial")
-                return
-            
-            # Procesar cada ficha
             successful = 0
             failed = 0
-            
+
             for i, ficha in enumerate(fichas):
                 self.logger.info(f"\n--- Procesando ficha {i+1} de {len(fichas)} ---")
-                
-                if self.process_single_ficha(ficha):
-                    successful += 1
-                else:
+
+                # 1️⃣ Abrir nuevo navegador
+                self.setup_driver()
+
+                try:
+                    # 2️⃣ Login y navegación inicial
+                    if not self.navigate_to_sena():
+                        self.logger.error("❌ Error en la navegación inicial")
+                        failed += 1
+                        continue
+
+                    # 3️⃣ Procesar ficha
+                    if self.process_single_ficha(ficha):
+                        successful += 1
+                    else:
+                        failed += 1
+
+                except Exception as e:
+                    self.logger.error(f"❌ Error procesando ficha {ficha}: {e}")
                     failed += 1
-                
-                # Pausa entre fichas
-                if i < len(fichas) - 1:  # No pausar después de la última
-                    self.logger.info("Esperando antes de la siguiente ficha...")
-                    time.sleep(5)  # Tiempo para que se procesen los resultados
-            
+
+                finally:
+                    # 4️⃣ Cerrar navegador siempre al final
+                    self.driver.quit()
+                    time.sleep(3)  # Pausa opcional para liberar recursos
+
             self.logger.info(f"\n{'='*50}")
             self.logger.info(f"AUTOMATIZACIÓN COMPLETADA")
             self.logger.info(f"Exitosas: {successful}")
             self.logger.info(f"Fallidas: {failed}")
             self.logger.info(f"{'='*50}")
-            
+
         except Exception as e:
             self.logger.error(f"Error en la automatización: {e}")
-        finally:
-            # Cerrar archivo HTML
-            try:
-                with open(self.html_dump_file, 'a', encoding='utf-8') as f:
-                    f.write("</body></html>")
-            except:
-                pass
-            
-            input("Presiona Enter para cerrar el navegador...")
-            self.driver.quit()
+
 
 def main():
     excel_path = "fichas_sena.xlsx"
