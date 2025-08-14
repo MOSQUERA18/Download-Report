@@ -10,6 +10,9 @@ import os
 from selenium.webdriver.common.action_chains import ActionChains
 import logging
 from datetime import datetime
+from pathlib import Path
+from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
+from selenium.webdriver.firefox.options import Options
 
 class SenaAutomation:
     def __init__(self):
@@ -45,35 +48,44 @@ class SenaAutomation:
         
         self.logger.info("Sistema de logging inicializado")
             
+
     def setup_driver(self):
-        """Configura el driver de Chrome con opciones para manejar SSL"""
-        chrome_options = Options()
-        chrome_options.add_argument('--ignore-certificate-errors')
-        chrome_options.add_argument('--ignore-ssl-errors')
-        chrome_options.add_argument('--allow-running-insecure-content')
-        chrome_options.add_argument('--disable-web-security')
-        chrome_options.add_argument('--ignore-certificate-errors-spki-list')
-        chrome_options.add_argument('--disable-blink-features=AutomationControlled')
-        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-        chrome_options.add_experimental_option('useAutomationExtension', False)
-        
-        # Configurar directorio de descarga
-        download_dir = os.path.join(os.getcwd(), "reportes_sena")
-        if not os.path.exists(download_dir):
-            os.makedirs(download_dir)
-            
-        prefs = {
-            "download.default_directory": download_dir,
-            "download.prompt_for_download": False,
-            "download.directory_upgrade": True,
-            "safebrowsing.enabled": True
-        }
-        chrome_options.add_experimental_option("prefs", prefs)
-        
-        self.driver = webdriver.Chrome(options=chrome_options)
-        self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        """Configura el driver de Firefox para descargar sin preguntar y guardar en Descargas."""
+
+        # Carpeta Descargas
+        download_dir = str(Path.home() / "Downloads")
+
+        # Crear perfil
+        profile = FirefoxProfile()
+
+        # Configuración de descarga automática
+        profile.set_preference("browser.download.folderList", 2)
+        profile.set_preference("browser.download.dir", download_dir)
+        profile.set_preference("browser.download.useDownloadDir", True)
+        profile.set_preference("browser.download.manager.showWhenStarting", False)
+        profile.set_preference("browser.download.manager.alertOnEXEOpen", False)
+
+        # Tipos de archivo para descarga directa
+        mime_types = [
+            "application/pdf",
+            "application/vnd.ms-excel",
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/msword",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "text/csv"
+        ]
+        profile.set_preference("browser.helperApps.neverAsk.saveToDisk", ",".join(mime_types))
+        profile.set_preference("pdfjs.disabled", True)
+
+        # Configurar opciones y asignar perfil
+        options = Options()
+        options.profile = profile
+
+        # Iniciar Firefox con el perfil
+        self.driver = webdriver.Firefox(options=options)
         self.wait = WebDriverWait(self.driver, 20)
-        self.logger.info("Driver configurado exitosamente")
+        self.logger.info(f"Firefox configurado para descargar en: {download_dir}")
+        
 
     def save_page_html(self, step_name, additional_info=""):
         """Guarda el HTML completo de la página actual con análisis"""
@@ -331,44 +343,7 @@ class SenaAutomation:
             
         except Exception as e:
             return False
-        
-    # def validate_and_click_consultar_aspirantes(self):
-    #     """Valida iframes y hace clic en el botón automáticamente"""
-    #     try:
-    #         self.logger.info("🎯 INICIANDO VALIDACIÓN Y CLIC EN 'CONSULTAR ASPIRANTES'")
-            
-    #         # Validar iframes
-    #         button_iframes = self.validate_iframes_after_modal_close()
-    #         self.driver.switch_to.default_content()
-    #         time.sleep(2)
-            
-    #         if not button_iframes:
-    #             self.logger.error("❌ No se encontró el botón en ningún iframe")
-    #             return False
-            
-    #         # Intentar hacer clic en el primer iframe que tiene el botón
-    #         target_iframe_index = button_iframes[0]
-    #         self.logger.info(f"🎯 Intentando clic en iframe {target_iframe_index + 1}")
-            
-    #         # Cambiar al iframe objetivo
-    #         self.driver.switch_to.default_content()
-    #         iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
-    #         target_iframe = iframes[target_iframe_index]
-    #         self.driver.switch_to.frame(target_iframe)
-            
-    #         # Múltiples estrategias de clic
-    #         success = self.execute_multiple_click_strategies()
-            
-    #         if success:
-    #             self.logger.info("✅ Clic exitoso en 'Consultar aspirantes'")
-    #             return True
-    #         else:
-    #             self.logger.error("❌ Todas las estrategias de clic fallaron")
-    #             return False
-                
-    #     except Exception as e:
-    #         self.logger.error(f"❌ Error en validación y clic: {e}")
-    #         return False
+
 
     def execute_multiple_click_strategies(self):
         """Ejecuta múltiples estrategias de clic en el botón"""
