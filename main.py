@@ -13,9 +13,13 @@ from datetime import datetime
 from pathlib import Path
 from selenium.webdriver.firefox.firefox_profile import FirefoxProfile
 from selenium.webdriver.firefox.options import Options
+import tkinter as tk
+from tkinter import ttk, filedialog, messagebox, scrolledtext
+import threading
 
 class SenaAutomation:
-    def __init__(self):
+    def __init__(self, gui_callback=None):
+        self.gui_callback = gui_callback
         self.setup_logging()
         
     def setup_logging(self):
@@ -46,6 +50,8 @@ class SenaAutomation:
             f.write("<html><head><title>SENA Automation HTML Dumps</title></head><body>\n")
         
         self.logger.info("Sistema de logging inicializado")
+        if self.gui_callback:
+            self.gui_callback("Sistema de logging inicializado")
             
 
     def setup_driver(self):
@@ -84,6 +90,8 @@ class SenaAutomation:
         self.driver = webdriver.Firefox(options=options)
         self.wait = WebDriverWait(self.driver, 20)
         self.logger.info(f"Firefox configurado para descargar en: {download_dir}")
+        if self.gui_callback:
+            self.gui_callback(f"Firefox configurado para descargar en: {download_dir}")
         
 
     def save_page_html(self, step_name, additional_info=""):
@@ -562,61 +570,134 @@ class SenaAutomation:
             df = pd.read_excel(excel_path)
             fichas = df.iloc[:, 0].tolist()
             self.logger.info(f"Se encontraron {len(fichas)} fichas en el Excel")
+            if self.gui_callback:
+                self.gui_callback(f"Se encontraron {len(fichas)} fichas en el Excel")
             return fichas
         except Exception as e:
             self.logger.error(f"Error al leer el Excel: {e}")
+            if self.gui_callback:
+                self.gui_callback(f"Error al leer el Excel: {e}")
             return []
 
     def switch_to_login_iframe(self):
-        """Cambia al iframe donde está el formulario de login"""
+        """Cambia al iframe de login con múltiples estrategias de búsqueda"""
         try:
             self.logger.info("Buscando iframe de login...")
-            self.wait.until(EC.presence_of_element_located((By.TAG_NAME, "iframe")))
+            if self.gui_callback:
+                self.gui_callback("Buscando iframe de login...")
             
+            # Esperar un poco más para que la página cargue completamente
+            time.sleep(3)
+            
+            # Estrategia 1: Buscar por src que contenga 'josso'
             iframes = self.driver.find_elements(By.TAG_NAME, "iframe")
-            self.logger.info(f"Se encontraron {len(iframes)} iframes")
+            self.logger.info(f"Se encontraron {len(iframes)} iframes en la página")
             
             for i, iframe in enumerate(iframes):
+                src = iframe.get_attribute("src") or ""
+                name = iframe.get_attribute("name") or ""
+                id_attr = iframe.get_attribute("id") or ""
+                
+                self.logger.info(f"Iframe {i}: src='{src}', name='{name}', id='{id_attr}'")
+                
+                # Buscar iframe con 'josso' en src
+                if "josso" in src.lower():
+                    self.driver.switch_to.frame(iframe)
+                    self.logger.info(f"✅ Cambiado al iframe de login por src: {src}")
+                    return True
+            
+            # Estrategia 2: Buscar iframe por name o id relacionado con login
+            for i, iframe in enumerate(iframes):
+                name = iframe.get_attribute("name") or ""
+                id_attr = iframe.get_attribute("id") or ""
+                
+                if any(keyword in name.lower() for keyword in ['login', 'auth', 'sso']) or \
+                   any(keyword in id_attr.lower() for keyword in ['login', 'auth', 'sso']):
+                    self.driver.switch_to.frame(iframe)
+                    self.logger.info(f"✅ Cambiado al iframe de login por name/id: {name}/{id_attr}")
+                    return True
+            
+            # Estrategia 3: Probar cada iframe para ver si contiene elementos de login
+            for i, iframe in enumerate(iframes):
                 try:
-                    self.logger.info(f"Probando iframe {i+1}...")
                     self.driver.switch_to.frame(iframe)
                     
-                    try:
-                        self.driver.find_element(By.ID, "username")
-                        self.logger.info(f"¡Formulario de login encontrado en iframe {i+1}!")
+                    # Buscar elementos típicos de login
+                    login_elements = self.driver.find_elements(By.ID, "username") + \
+                                   self.driver.find_elements(By.NAME, "josso_password") + \
+                                   self.driver.find_elements(By.CSS_SELECTOR, "input.login100-form-btn")
+                    
+                    if login_elements:
+                        self.logger.info(f"✅ Iframe de login encontrado por contenido (iframe {i})")
                         return True
-                    except:
-                        self.driver.switch_to.default_content()
-                        continue
-                        
+                    
+                    # Volver al contexto principal para probar el siguiente iframe
+                    self.driver.switch_to.default_content()
+                    
                 except Exception as e:
-                    self.logger.error(f"Error al acceder al iframe {i+1}: {e}")
                     self.driver.switch_to.default_content()
                     continue
             
-            self.logger.error("No se encontró el iframe con el formulario de login")
+            # Estrategia 4: Verificar si los elementos de login están en el contexto principal
+            try:
+                self.driver.switch_to.default_content()
+                login_elements = self.driver.find_elements(By.ID, "username")
+                if login_elements:
+                    self.logger.info("✅ Elementos de login encontrados en contexto principal (sin iframe)")
+                    return True
+            except:
+                pass
+            
+            self.logger.error("❌ No se encontró iframe de login con ninguna estrategia")
+            if self.gui_callback:
+                self.gui_callback("❌ No se encontró iframe de login")
             return False
             
         except Exception as e:
-            self.logger.error(f"Error al buscar iframes: {e}")
+            self.logger.error(f"❌ Error al cambiar al iframe de login: {e}")
+            self.driver.switch_to.default_content()
             return False
 
     def navigate_to_sena(self):
         """Navega al sitio de SENA Sofia Plus y hace login"""
         try:
             self.logger.info("Navegando a SENA Sofia Plus...")
-            self.driver.get("http://senasofiaplus.edu.co/sofia-public/")
-            time.sleep(2)
+            if self.gui_callback:
+                self.gui_callback("Navegando a SENA Sofia Plus...")
             
+            self.driver.get("http://senasofiaplus.edu.co/sofia-public/")
+            time.sleep(5)  # Aumentar tiempo de espera
+            
+            # Manejar advertencia SSL con múltiples selectores
             try:
-                continue_button = self.driver.find_element(By.ID, "proceed-button")
-                continue_button.click()
-                self.logger.info("Advertencia SSL manejada")
-                time.sleep(2)
+                ssl_selectors = [
+                    (By.ID, "proceed-button"),
+                    (By.ID, "details-button"),
+                    (By.XPATH, "//button[contains(text(), 'Continuar')]"),
+                    (By.XPATH, "//button[contains(text(), 'Proceed')]"),
+                    (By.XPATH, "//a[contains(text(), 'Continuar')]")
+                ]
+                
+                for selector_type, selector_value in ssl_selectors:
+                    try:
+                        continue_button = self.driver.find_element(selector_type, selector_value)
+                        continue_button.click()
+                        self.logger.info("✅ Advertencia SSL manejada")
+                        time.sleep(3)
+                        break
+                    except:
+                        continue
+                        
             except:
                 self.logger.info("No se encontró advertencia SSL o ya se pasó")
             
+            # Esperar más tiempo para que la página cargue completamente
+            time.sleep(3)
+            
             if not self.switch_to_login_iframe():
+                self.logger.error("❌ Error en la navegación inicial")
+                if self.gui_callback:
+                    self.gui_callback("❌ Error en la navegación inicial")
                 return False
             
             if not self.login():
@@ -629,12 +710,17 @@ class SenaAutomation:
             
         except Exception as e:
             self.logger.error(f"Error al navegar al sitio: {e}")
+            if self.gui_callback:
+                self.gui_callback(f"Error al navegar al sitio: {e}")
             return False
 
     def login(self):
         """Realiza el proceso de login"""
         try:
             self.logger.info("Iniciando proceso de login...")
+            if self.gui_callback:
+                self.gui_callback("Iniciando proceso de login...")
+            
             self.wait.until(EC.presence_of_element_located((By.ID, "username")))
             
             documento_field = self.driver.find_element(By.ID, "username")
@@ -662,6 +748,8 @@ class SenaAutomation:
                 
                 if "login" not in current_url.lower() or len(self.driver.find_elements(By.TAG_NAME, "iframe")) > 0:
                     self.logger.info("Login exitoso")
+                    if self.gui_callback:
+                        self.gui_callback("Login exitoso")
                     return True
                 else:
                     self.logger.error("Login falló - aún en página de login")
@@ -694,6 +782,9 @@ class SenaAutomation:
         """Selecciona el rol después del login"""
         try:
             self.logger.info("Seleccionando rol...")
+            if self.gui_callback:
+                self.gui_callback("Seleccionando rol...")
+            
             role_select = self.wait.until(
                 EC.presence_of_element_located((By.ID, "seleccionRol:roles"))
             )
@@ -712,6 +803,8 @@ class SenaAutomation:
         """Navega a la opción 'Inscripción' en el menú principal"""
         try:
             self.logger.info("Navegando a 'Inscripción'...")
+            if self.gui_callback:
+                self.gui_callback("Navegando a 'Inscripción'...")
             
             inscripcion_link = self.wait.until(
                 EC.element_to_be_clickable((By.XPATH, "//span[@class='menuPrimario' and text()='Inscripción']"))
@@ -1079,6 +1172,8 @@ class SenaAutomation:
             self.logger.info(f"\n{'='*50}")
             self.logger.info(f"PROCESANDO FICHA: {ficha}")
             self.logger.info(f"{'='*50}")
+            if self.gui_callback:
+                self.gui_callback(f"PROCESANDO FICHA: {ficha}")
 
             # 1. Seleccionar Primera Opción
             ruta_iframes = self.seleccionar_primera_opcion()
@@ -1106,13 +1201,15 @@ class SenaAutomation:
                 return False
 
             self.logger.info(f"✓ Ficha {ficha} procesada completamente")
+            if self.gui_callback:
+                self.gui_callback(f"✓ Ficha {ficha} procesada completamente")
             return True
 
         except Exception as e:
             self.logger.error(f"❌ Error general al procesar ficha {ficha}: {e}")
             return False
 
-    def run_automation(self, excel_path):
+    def run_automation(self, excel_path, progress_callback=None, pause_between_fichas=3):
         """Ejecuta la automatización abriendo/cerrando navegador por ficha"""
         try:
             # Leer fichas del Excel
@@ -1122,9 +1219,16 @@ class SenaAutomation:
             
             successful = 0
             failed = 0
+            total_fichas = len(fichas)
 
             for i, ficha in enumerate(fichas):
-                self.logger.info(f"\n--- Procesando ficha {i+1} de {len(fichas)} ---")
+                self.logger.info(f"\n--- Procesando ficha {i+1} de {total_fichas} ---")
+                if self.gui_callback:
+                    self.gui_callback(f"--- Procesando ficha {i+1} de {total_fichas} ---")
+                
+                # Update progress
+                if progress_callback:
+                    progress_callback(i, total_fichas, successful, failed)
 
                 # 1️⃣ Abrir nuevo navegador
                 self.setup_driver()
@@ -1149,22 +1253,231 @@ class SenaAutomation:
                 finally:
                     # 4️⃣ Cerrar navegador siempre al final
                     self.driver.quit()
-                    time.sleep(3)  # Pausa opcional para liberar recursos
+                    time.sleep(pause_between_fichas)  # Pausa configurable
+
+            # Final progress update
+            if progress_callback:
+                progress_callback(total_fichas, total_fichas, successful, failed)
 
             self.logger.info(f"\n{'='*50}")
             self.logger.info(f"AUTOMATIZACIÓN COMPLETADA")
             self.logger.info(f"Exitosas: {successful}")
             self.logger.info(f"Fallidas: {failed}")
             self.logger.info(f"{'='*50}")
+            
+            if self.gui_callback:
+                self.gui_callback(f"AUTOMATIZACIÓN COMPLETADA - Exitosas: {successful}, Fallidas: {failed}")
 
         except Exception as e:
             self.logger.error(f"Error en la automatización: {e}")
+            if self.gui_callback:
+                self.gui_callback(f"Error en la automatización: {e}")
+
+
+class SenaAutomationGUI:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("SENA Automation - Procesador de Fichas")
+        self.root.geometry("900x700")
+        self.root.configure(bg='#f0f0f0')
+        
+        # Variables
+        self.excel_path = tk.StringVar()
+        self.timeout_var = tk.IntVar(value=10)
+        self.pause_var = tk.IntVar(value=3)
+        self.automation = None
+        self.is_running = False
+        
+        self.setup_ui()
+        
+    def setup_ui(self):
+        # Main container
+        main_frame = ttk.Frame(self.root, padding="20")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Configure grid weights
+        self.root.columnconfigure(0, weight=1)
+        self.root.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(1, weight=1)
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="SENA Automation", 
+                               font=('Arial', 18, 'bold'))
+        title_label.grid(row=0, column=0, columnspan=3, pady=(0, 20))
+        
+        # File selection section
+        file_frame = ttk.LabelFrame(main_frame, text="Selección de Archivo Excel", padding="10")
+        file_frame.grid(row=1, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
+        file_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(file_frame, text="Archivo Excel:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        
+        self.file_entry = ttk.Entry(file_frame, textvariable=self.excel_path, width=50)
+        self.file_entry.grid(row=0, column=1, sticky=(tk.W, tk.E), padx=(0, 10))
+        
+        browse_btn = ttk.Button(file_frame, text="Examinar", command=self.browse_file)
+        browse_btn.grid(row=0, column=2)
+        
+        # File info
+        self.file_info_label = ttk.Label(file_frame, text="No se ha seleccionado archivo", 
+                                        foreground='gray')
+        self.file_info_label.grid(row=1, column=0, columnspan=3, sticky=tk.W, pady=(5, 0))
+        
+        # Configuration section
+        config_frame = ttk.LabelFrame(main_frame, text="Configuración", padding="10")
+        config_frame.grid(row=2, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
+        
+        ttk.Label(config_frame, text="Timeout (segundos):").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        timeout_spin = ttk.Spinbox(config_frame, from_=5, to=30, textvariable=self.timeout_var, width=10)
+        timeout_spin.grid(row=0, column=1, sticky=tk.W, padx=(0, 20))
+        
+        ttk.Label(config_frame, text="Pausa entre fichas (segundos):").grid(row=0, column=2, sticky=tk.W, padx=(0, 10))
+        pause_spin = ttk.Spinbox(config_frame, from_=1, to=10, textvariable=self.pause_var, width=10)
+        pause_spin.grid(row=0, column=3, sticky=tk.W)
+        
+        # Control buttons
+        control_frame = ttk.Frame(main_frame)
+        control_frame.grid(row=3, column=0, columnspan=3, pady=(0, 10))
+        
+        self.start_btn = ttk.Button(control_frame, text="Iniciar Automatización", 
+                                   command=self.start_automation, style='Accent.TButton')
+        self.start_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.stop_btn = ttk.Button(control_frame, text="Detener", 
+                                  command=self.stop_automation, state='disabled')
+        self.stop_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        clear_btn = ttk.Button(control_frame, text="Limpiar Log", command=self.clear_log)
+        clear_btn.pack(side=tk.LEFT)
+        
+        # Progress section
+        progress_frame = ttk.LabelFrame(main_frame, text="Progreso", padding="10")
+        progress_frame.grid(row=4, column=0, columnspan=3, sticky=(tk.W, tk.E), pady=(0, 10))
+        progress_frame.columnconfigure(0, weight=1)
+        
+        self.progress_var = tk.DoubleVar()
+        self.progress_bar = ttk.Progressbar(progress_frame, variable=self.progress_var, 
+                                           maximum=100, length=400)
+        self.progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
+        
+        self.status_label = ttk.Label(progress_frame, text="Listo para iniciar")
+        self.status_label.grid(row=1, column=0, sticky=tk.W)
+        
+        self.stats_label = ttk.Label(progress_frame, text="Exitosas: 0 | Fallidas: 0")
+        self.stats_label.grid(row=2, column=0, sticky=tk.W)
+        
+        # Log section
+        log_frame = ttk.LabelFrame(main_frame, text="Log de Actividad", padding="10")
+        log_frame.grid(row=5, column=0, columnspan=3, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        log_frame.columnconfigure(0, weight=1)
+        log_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(5, weight=1)
+        
+        self.log_text = scrolledtext.ScrolledText(log_frame, height=15, width=80)
+        self.log_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Configure styles
+        style = ttk.Style()
+        style.configure('Accent.TButton', foreground='white')
+        
+    def browse_file(self):
+        filename = filedialog.askopenfilename(
+            title="Seleccionar archivo Excel",
+            filetypes=[("Excel files", "*.xlsx *.xls"), ("All files", "*.*")]
+        )
+        if filename:
+            self.excel_path.set(filename)
+            self.validate_file()
+    
+    def validate_file(self):
+        try:
+            if self.excel_path.get():
+                df = pd.read_excel(self.excel_path.get())
+                fichas_count = len(df)
+                self.file_info_label.config(
+                    text=f"✓ Archivo válido - {fichas_count} fichas encontradas",
+                    foreground='green'
+                )
+                self.start_btn.config(state='normal')
+            else:
+                self.file_info_label.config(
+                    text="No se ha seleccionado archivo",
+                    foreground='gray'
+                )
+                self.start_btn.config(state='disabled')
+        except Exception as e:
+            self.file_info_label.config(
+                text=f"✗ Error al leer archivo: {str(e)}",
+                foreground='red'
+            )
+            self.start_btn.config(state='disabled')
+    
+    def log_message(self, message):
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        self.log_text.insert(tk.END, f"[{timestamp}] {message}\n")
+        self.log_text.see(tk.END)
+        self.root.update_idletasks()
+    
+    def update_progress(self, current, total, successful, failed):
+        if total > 0:
+            progress = (current / total) * 100
+            self.progress_var.set(progress)
+            self.status_label.config(text=f"Procesando: {current}/{total}")
+            self.stats_label.config(text=f"Exitosas: {successful} | Fallidas: {failed}")
+        self.root.update_idletasks()
+    
+    def start_automation(self):
+        if not self.excel_path.get():
+            messagebox.showerror("Error", "Por favor selecciona un archivo Excel")
+            return
+        
+        self.is_running = True
+        self.start_btn.config(state='disabled')
+        self.stop_btn.config(state='normal')
+        self.progress_var.set(0)
+        
+        # Start automation in separate thread
+        def run_automation():
+            try:
+                self.automation = SenaAutomation(gui_callback=self.log_message)
+                self.automation.run_automation(
+                    self.excel_path.get(),
+                    progress_callback=self.update_progress,
+                    pause_between_fichas=self.pause_var.get()
+                )
+            except Exception as e:
+                self.log_message(f"Error en la automatización: {e}")
+            finally:
+                self.root.after(0, self.automation_finished)
+        
+        thread = threading.Thread(target=run_automation, daemon=True)
+        thread.start()
+    
+    def stop_automation(self):
+        self.is_running = False
+        if self.automation and hasattr(self.automation, 'driver'):
+            try:
+                self.automation.driver.quit()
+            except:
+                pass
+        self.automation_finished()
+    
+    def automation_finished(self):
+        self.is_running = False
+        self.start_btn.config(state='normal')
+        self.stop_btn.config(state='disabled')
+        self.status_label.config(text="Automatización completada")
+    
+    def clear_log(self):
+        self.log_text.delete(1.0, tk.END)
+    
+    def run(self):
+        self.root.mainloop()
 
 
 def main():
-    excel_path = "fichas_sena.xlsx"
-    automation = SenaAutomation()
-    automation.run_automation(excel_path)
+    app = SenaAutomationGUI()
+    app.run()
 
 if __name__ == "__main__":
     main()
