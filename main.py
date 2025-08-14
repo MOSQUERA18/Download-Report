@@ -431,7 +431,7 @@ class SenaAutomation:
         """Verifica si el clic fue exitoso"""
         try:
             # Esperar cambios en la página
-            time.sleep(3)
+            time.sleep(2)
             
             # Verificar si hay indicadores de carga o cambios
             loading_indicators = [
@@ -606,7 +606,7 @@ class SenaAutomation:
         try:
             self.logger.info("Navegando a SENA Sofia Plus...")
             self.driver.get("http://senasofiaplus.edu.co/sofia-public/")
-            time.sleep(3)
+            time.sleep(2)
             
             try:
                 continue_button = self.driver.find_element(By.ID, "proceed-button")
@@ -701,7 +701,7 @@ class SenaAutomation:
             select = Select(role_select)
             select.select_by_value("33")
             self.logger.info("Rol 'Encargado de ingreso centro formación' seleccionado")
-            time.sleep(3)
+            time.sleep(2)
             return True
             
         except Exception as e:
@@ -718,7 +718,7 @@ class SenaAutomation:
             )
             inscripcion_link.click()
             self.logger.info("Clic en 'Inscripción' exitoso")
-            time.sleep(3)
+            time.sleep(2)
             
             consultas_link = self.wait.until(
                 EC.element_to_be_clickable((By.XPATH, "//a[contains(text(),'Consultas')]"))
@@ -844,7 +844,7 @@ class SenaAutomation:
             
             # PASO 1: Esperar un poco para que el formulario se cargue después del clic
             self.logger.info("Esperando que se cargue el formulario...")
-            time.sleep(3)
+            time.sleep(1)
             
             # PASO 2: Buscar e insertar la ficha en el campo de input
             self.logger.info("Buscando el campo de input en el contexto actual (iframe)...")
@@ -875,7 +875,7 @@ class SenaAutomation:
             
             # PASO 4: Esperar 2 segundos y hacer clic en el botón "Agregar"
             self.logger.info("Esperando 2 segundos para que aparezcan los resultados (en iframe)...")
-            time.sleep(2)
+            time.sleep(1)
 
 
             
@@ -917,7 +917,7 @@ class SenaAutomation:
                 
                 # Esperar a que se procese la búsqueda
                 self.logger.info("Esperando 2 segundos para que aparezcan los resultados (en iframe)...")
-                time.sleep(2)
+                time.sleep(1)
                 return True
                 
             except:
